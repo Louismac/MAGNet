@@ -2,7 +2,7 @@
 
 ## Colab
 
-[![colab_badge](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1aK8K186QegnWVMAhfnFRofk_Jf7BBUxl?usp=sharing)
+[![colab_badge](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1CgXT8xsmoPA1MWH4tifY6sTAnutsANRv?usp=sharing)
 
 ## Description
 
