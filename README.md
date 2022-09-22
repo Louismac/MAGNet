@@ -2,7 +2,13 @@
 
 ## Colab
 
+Colab for training and generating audio 
+
 [![colab_badge](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1CgXT8xsmoPA1MWH4tifY6sTAnutsANRv?usp=sharing)
+
+## Realtime implementation 
+
+[This Repo](https://github.com/ual-cci/music_gen_interaction_RTML)
 
 ## Description
 
