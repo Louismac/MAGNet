@@ -1,5 +1,11 @@
 # MAGNet
 
+## Colab
+
+[![colab_badge](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1aK8K186QegnWVMAhfnFRofk_Jf7BBUxl?usp=sharing)
+
+## Description
+
 This demonstrates an LSTM audio generation process using MAGNet, a spectral approach to audio analysis and generation with neural networks. The techniques included here were used as part of the Mezzanine Vs. MAGNet project featured as part of the Barbican's AI: More than Human exhibition
 
 It represents ongoing work from researchers at The Creative Computing Institute, UAL and Goldsmiths, University of London. MAGNet trains on the magnitude spectra of acoustic audio signals, and reproduces entirely new magnitude spectra that can be turned back in to sound using phase reconstruction - it's very high quality in terms of audio fidelity.
