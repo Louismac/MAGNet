@@ -2,13 +2,17 @@
 
 ## Colab
 
-Colab for training and generating audio 
+Colab for training and generating audio using Keras
 
 [![colab_badge](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1CgXT8xsmoPA1MWH4tifY6sTAnutsANRv?usp=sharing)
 
+## Train / Generate in [PyTorch](PyTorch/)
+
+Recommended approach and needed for using realtime with Dorothy
+
 ## Realtime implementation 
 
-[This Repo](https://github.com/ual-cci/music_gen_interaction_RTML)
+Implemented as part of the [Dorothy](https://github.com/lmccallum/dorothy) creative coding library 
 
 ## Description
 
@@ -18,11 +22,10 @@ It represents ongoing work from researchers at The Creative Computing Institute,
 
 This repo provides a chance for people to train their own models with their own source audio and genreate new sounds. Both given projects are designed to be simple to understand and easy to run.
 
-This repo contains two Jupyter notebooks. 
+## Legacy versions
 
 train-for-python contains a walkthrough of how to use tflearn to do this entirely in python. Phase reconstruction is done using griffin-lim
 
 train-for-javascript contains a walkthrough of how use Keras to train a model, which can then be converted to be used in javascript projects in the browser using tensorflow.js. Example code for this is on the MIMIC platform https://mimicproject.com/code/b530ba9e-dfd9-0440-8358-86b6420b210d. Phase reconstruction is doing using a port of LWS, developed by the Goldsmiths for this purpose.
-
 
 Contributions have been made by Mick Grierson, Leon Fedden, Sam Park-Wolfe, Jakub Fiala and Louis McCallum. 
