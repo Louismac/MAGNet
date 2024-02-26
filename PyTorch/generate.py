@@ -39,14 +39,6 @@ predicted_magnitudes = impulse
 random_chance = 0.05
 print(x_frames.shape, impulse.shape)
 
-#x_frames is items x fft size x seq_len
-#impulse is fft size x seq_len
-#predicted_magnitudes is num_frames x fft size
-#model takes 1 x fft size x seq_len
-#model gives 1 x fft size
-#the confusing this is the impulse has sequence after fft, and the predicted mags has it before 
-#prediction.transpose(0,1) when joining to fix this
-
 for j in range(output_sequence_length):
     prediction = model(impulse.unsqueeze(0))
     predicted_magnitudes = torch.cat((predicted_magnitudes, prediction.transpose(0,1)), dim=1)
@@ -61,24 +53,6 @@ for j in range(output_sequence_length):
       index = int(points[ctr] * len(x_frames))
       impulse = x_frames[index]
       change_at = change_at + lengths[ctr]
-
-# y_frames = y_frames.detach().numpy()
-# print(y_frames.shape)
-
-# from scipy.signal import get_window
-# reconstructed_signal = np.zeros(len(y_frames * hop_length) + win_length)
-# start = 0
-# window = get_window('hann', win_length)
-# for f in y_frames:
-#     print(f.shape)
-#     chunk = librosa.griffinlim(f.reshape(1, -1), n_fft=2028)
-#     windowed_chunk = chunk * window
-#     reconstructed_signal[start:start+win_length] += windowed_chunk
-#     start += hop_length
-# timestampStr = datetime.now().strftime("%d-%b-%Y-%H-%M-%S")
-# # # WRITE AUDIO
-# output_name = "gospel"
-# sf.write(f"{output_name}_{timestampStr}.wav", reconstructed_signal, 22050)
 
 predicted_magnitudes = predicted_magnitudes.detach().numpy()
 audio = librosa.griffinlim(predicted_magnitudes, n_fft=n_fft, hop_length=hop_length, win_length=win_length)

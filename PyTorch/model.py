@@ -5,11 +5,19 @@ import torch.nn as nn
 import numpy as np
 import librosa
 import sys
-from os.path import isdir
+from os.path import isdir, exists
 from os import listdir
 
 
 def preprocess_data(path, n_fft=2048,hop_length=512, win_length=2048, sequence_length = 40, sr = 44100):
+    cached_x_path = path + '_x_frames.npy'
+    cached_y_path = path + '_y_frames.npy'
+    if exists(cached_x_path) and exists(cached_y_path):
+        x_frames = np.load(cached_x_path)
+        y_frames = np.load(cached_y_path)
+        print("loading cached data")
+        return torch.tensor(x_frames), torch.tensor(y_frames)
+    
     x = [0]
     if not isdir(path):
         x, sr = librosa.load(path, sr=sr) 
@@ -18,9 +26,8 @@ def preprocess_data(path, n_fft=2048,hop_length=512, win_length=2048, sequence_l
         x = np.array([0])
         for file in files:
             if not ".DS" in file:
-                audio, sr, = librosa.load(path + file, sr = sr)
+                audio, sr, = librosa.load(path + file, sr = 44100)
                 x = np.concatenate((x, audio))
-
     x = np.array(x, dtype=np.float32) 
     data_tf = torch.tensor(x)
     # Compute STFT
@@ -48,6 +55,8 @@ def preprocess_data(path, n_fft=2048,hop_length=512, win_length=2048, sequence_l
     x_frames = torch.stack(x_frames)
     y_frames = torch.stack(y_frames)
     print(x_frames.shape, y_frames.shape)
+    np.save(cached_x_path, x_frames)
+    np.save(cached_y_path, y_frames)
     return x_frames, y_frames
 
 class SpectrogramDataset(Dataset):
