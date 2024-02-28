@@ -2,24 +2,22 @@ import torch
 import torch.nn as nn
 from torch.optim import Adam
 from torch.utils.data import DataLoader
-from model import RNNEmbeddingModel, RNNModel
-from model import preprocess_data_mp, MultiClassCoeffiecentLoss, MatchingPursuitDataset
+from model import  RNNModel
+from model import preprocess_data_mp, MatchingPursuitDataset, get_dictionary
 from datetime import datetime
 
 sequence_length = 40
 num_atoms = 100
-file_name = "../assets/Wiley.wav"
-#items x inputs x seq
 dictionary_size = 10000
-x_frames, y_frames = preprocess_data_mp(file_name,sequence_length=sequence_length, 
-                                        sr = 44100, num_atoms=num_atoms,
-                                        chunk_size=2048, dictionary_size=dictionary_size)
-#Checking normalise
-print(x_frames[:,:num_atoms].max(), x_frames[:,:num_atoms].min())
-print(x_frames[:,num_atoms:].max(), x_frames[:,num_atoms:].min())
-print(y_frames[:,:num_atoms].max(), y_frames[:,:num_atoms].min())
-print(y_frames[:,num_atoms:].max(), y_frames[:,num_atoms:].min())
-
+file_name = "../assets/Wiley_10.wav"
+chunk_size = 2048
+hop_length = chunk_size//4
+sr = 44100
+dictionary = get_dictionary(chunk_size=chunk_size, max_freq=10000, sr=sr)
+x_frames, y_frames, cmin, cmax = preprocess_data_mp(file_name,sequence_length=sequence_length, 
+                                        sr = sr, num_atoms=num_atoms,
+                                        chunk_size=chunk_size, hop_length=hop_length, 
+                                        dictionary=dictionary)
 dataset = MatchingPursuitDataset(x_frames, y_frames)
 # Create a DataLoader
 batch_size = 64  # Define your batch size

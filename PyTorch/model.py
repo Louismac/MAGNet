@@ -7,15 +7,8 @@ import librosa
 import sys
 from os.path import isdir, exists
 from os import listdir
-from matching_pursuit import create_gabor_dictionary, process_in_chunks
+from matching_pursuit import get_dictionary, process_in_chunks
 
-def get_dictionary(chunk_size=2048, dictionary_size = 10000, min_freq=30, max_freq=20000):
-    sigmas = [0.05, 0.1, 0.2, 0.5, 0.7, 1.0, 1.5]  
-    freqs = np.linspace(min_freq, max_freq, dictionary_size//len(sigmas))
-    dictionary = create_gabor_dictionary(chunk_size, freqs, sigmas)
-    dictionary = dictionary.astype(np.float64)
-    dictionary /= np.linalg.norm(dictionary, axis=0)
-    return dictionary
 
 def normalise_array(arr):
     # Subtract the minimum and divide by the range
@@ -25,7 +18,7 @@ def normalise_array(arr):
     return normalised_arr
 
 def preprocess_data_mp(path, sr = 44100, chunk_size=2048, hop_length=1024, 
-                       num_atoms=100, dictionary_size = 10000, sequence_length = 40):
+                       num_atoms=100, dictionary=None, sequence_length = 40):
     x = [0]
     if not isdir(path):
         x, sr = librosa.load(path, sr=sr) 
@@ -37,7 +30,6 @@ def preprocess_data_mp(path, sr = 44100, chunk_size=2048, hop_length=1024,
                 audio, sr, = librosa.load(path + file, sr = sr)
                 x = np.concatenate((x, audio))
     x = np.array(x, dtype=np.float32)
-    dictionary = get_dictionary(chunk_size=chunk_size)
     _,chunks_info = process_in_chunks(x, 
                                     dictionary, 
                                     hop_length=hop_length,
@@ -49,8 +41,12 @@ def preprocess_data_mp(path, sr = 44100, chunk_size=2048, hop_length=1024,
     step = 1
     x_frames = []
     y_frames = []
-    print(np.unique(chunks_info[:,:num_atoms]))
+    dictionary_size = len(dictionary[0])
     chunks_info[:,:num_atoms] = chunks_info[:,:num_atoms]/dictionary_size
+    coefficients = chunks_info[:,num_atoms:]
+    cmin = coefficients.min()
+    cmax = coefficients.max()
+    chunks_info[:,num_atoms:] = (coefficients - cmin) / (cmax - cmin)
     for i in range(start, end, step):
         x = chunks_info[i:i + sequence_length]
         y = chunks_info[i + sequence_length]
@@ -59,7 +55,7 @@ def preprocess_data_mp(path, sr = 44100, chunk_size=2048, hop_length=1024,
     x_frames = torch.stack(x_frames).transpose(1,2)
     y_frames = torch.stack(y_frames)
     print(x_frames.shape, y_frames.shape)
-    return x_frames, y_frames
+    return x_frames, y_frames, cmin, cmax
 
 class MatchingPursuitDataset(Dataset):
     def __init__(self, x_frames, y_frames):

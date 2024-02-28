@@ -7,7 +7,7 @@ from scipy.signal import get_window
 def process_in_chunks(signal, dictionary, chunk_size=2048, hop_length = 1024,
                        window_type='hann', iterations = 100):
 
-    cached_path = "cached_chunks.npy"
+    cached_path = "cached_chunks_" + str(chunk_size) + "_" + str(len(dictionary[0])) + "_" + str(iterations) +".npy"
     reconstructed_signal = np.zeros(len(signal))
     if exists(cached_path):
         chunks_info = np.load(cached_path)
@@ -28,8 +28,8 @@ def process_in_chunks(signal, dictionary, chunk_size=2048, hop_length = 1024,
         print("chunk complete", start, end, len(chunk_info), len(chunks_info))
         reconstructed_signal[start:end] += processed_chunk
         weight_sum[start:end] += window  
-    non_zero_weights = weight_sum > 0
-    reconstructed_signal[non_zero_weights] /= weight_sum[non_zero_weights]
+    # non_zero_weights = weight_sum > 0
+    # reconstructed_signal[non_zero_weights] /= weight_sum[non_zero_weights]
     np.save(cached_path, chunks_info)
     return reconstructed_signal, np.array(chunks_info)
 
@@ -67,9 +67,6 @@ def matching_pursuit(signal, dictionary, iterations=20):
     # atom_indices = np.nonzero(coefficients)[0]
     # return reconstructed_signal, atom_indices, coefficients
 
-def unnormalize_array(normalised_arr, min_val, max_val):
-    original_arr = (normalised_arr * (max_val - min_val)) + min_val
-    return original_arr
 
 def reconstruct_signal(atom_indices, coefficients, dictionary):
     reconstructed_signal = np.zeros(dictionary.shape[0])
@@ -78,7 +75,7 @@ def reconstruct_signal(atom_indices, coefficients, dictionary):
         reconstructed_signal += coeff * dictionary[:, index]
     return reconstructed_signal
 
-def reconstruct_from_chunks(chunks_info, dictionary, chunk_size=2048, hop_length=1024):
+def reconstruct_from_chunks(chunks_info, dictionary, chunk_size=2048, hop_length=1024, cmin=0, cmax=1):
     
     signal_length = (len(chunks_info) * (hop_length))+chunk_size
     reconstructed_signal = np.zeros(signal_length)
@@ -88,35 +85,49 @@ def reconstruct_from_chunks(chunks_info, dictionary, chunk_size=2048, hop_length
     start = 0
     end = chunk_size
     
-    for i, chunk_info in enumerate(chunks_info):
-        atom_indices = chunk_info[:num_atoms]
-        unnormalised = np.array(np.ceil(atom_indices*len(dictionary[0])), dtype=np.int32)
-        if i < 3:
-            print(unnormalised, i)
-        coefficients = chunk_info[num_atoms:]
-        chunk_reconstruction = reconstruct_signal(unnormalised, coefficients, dictionary) 
+    for _, chunk_info in enumerate(chunks_info):
+
+        atom_indices = chunk_info[:num_atoms].detach().numpy()
+        atom_indices = np.array(np.ceil(atom_indices*len(dictionary[0])), dtype=np.int32)-1
+        
+        coefficients = chunk_info[num_atoms:].detach().numpy()
+        coefficients = (coefficients * (cmax - cmin)) + cmin
+        
+        chunk_reconstruction = reconstruct_signal(atom_indices, coefficients, dictionary) 
+        
         reconstructed_signal[start:end] += chunk_reconstruction
         weight_sum[start:end] += 1  
         start += hop_length
         end += hop_length
+
     overlap_areas = weight_sum > 1  
     reconstructed_signal[overlap_areas] /= weight_sum[overlap_areas]
     return reconstructed_signal
 
-def generate_gabor_atom(length, freq, sigma, phase=0):
-    t = np.linspace(-1, 1, length)
-    gaussian = np.exp(-0.5 * (t/sigma)**2)
+def generate_gabor_atom(length, freq, sigma, sr, phase=0):
+    # Adjust time vector to be in seconds 
+    t = np.linspace(-1, 1, length) * (length / sr)
+    gaussian = np.exp(-0.5 * (t / sigma) ** 2)
     sinusoid = np.cos(2 * np.pi * freq * t + phase)
     return gaussian * sinusoid
 
-def create_gabor_dictionary(length, freqs, sigmas, phases=[0]):
+def create_gabor_dictionary(length, freqs, sigmas, sr, phases=[0]):
     atoms = []
     for freq in freqs:
         for sigma in sigmas:
             for phase in phases:
-                atom = generate_gabor_atom(length, freq, sigma, phase)
+                atom = generate_gabor_atom(length, freq, sigma, sr, phase)
                 atoms.append(atom)
     return np.array(atoms).T  # Each column is an atom
+
+def get_dictionary(chunk_size=2048, dictionary_size=10000, 
+                   min_freq=30, max_freq=20000, sr=44100,
+                   sigmas=[0.05, 0.1, 0.2, 0.5, 0.7, 1.0, 1.5]):
+    freqs = np.logspace(np.log10(min_freq), np.log10(max_freq), dictionary_size // len(sigmas))
+    dictionary = create_gabor_dictionary(chunk_size, freqs, sigmas, sr)
+    dictionary = dictionary.astype(np.float64)
+    dictionary /= np.linalg.norm(dictionary, axis=0)
+    return dictionary
 
 # if __name__ == "__main__":
 #     file_path = 'gospel.wav'

@@ -1,22 +1,31 @@
 import torch
 from model import RNNModel, MatchingPursuitDataset
-from model import get_dictionary, preprocess_data_mp, reconstruct_from_chunks
+from model import get_dictionary, preprocess_data_mp
+from matching_pursuit import reconstruct_from_chunks
 from datetime import datetime
 import numpy as np
 import soundfile as sf
 
 sequence_length = 40
 num_atoms = 100
-file_name = "../assets/Wiley.wav"
-x_frames, y_frames = preprocess_data_mp(file_name,sequence_length=sequence_length, sr = 44100, num_atoms=num_atoms)
+dictionary_size = 10000
+file_name = "../assets/Wiley_10.wav"
+chunk_size = 2048
+hop_length = chunk_size//4
+sr = 44100
+dictionary = get_dictionary(chunk_size=chunk_size, max_freq=10000, sr=sr)
+x_frames, y_frames, cmin, cmax = preprocess_data_mp(file_name,sequence_length=sequence_length, 
+                                        sr = sr, num_atoms=num_atoms,
+                                        chunk_size=chunk_size, hop_length=hop_length, 
+                                        dictionary=dictionary)
 dataset = MatchingPursuitDataset(x_frames, y_frames)
 
 points = [0.0, 0.5, 0.2, 0.7]
-lengths = [200, 200, 200, 200] 
+lengths = [500, 500, 500, 500] 
 random_strength = 0.2
 
 model = RNNModel(input_size=num_atoms*2, hidden_size=128, num_layers=2, output_size=num_atoms*2)  # Example model initialization
-checkpoint = "model_weights_26-Feb-2024-17-10-36.pth"
+checkpoint ="model_weights_28-Feb-2024-19-44-00.pth"
 model.load_state_dict(torch.load(checkpoint))
 model.eval()
 
@@ -48,9 +57,8 @@ for j in range(output_sequence_length):
       index = int(points[ctr] * len(x_frames))
       impulse = x_frames[index]
       change_at = change_at + lengths[ctr]
-chunk_size = 1024
-dictionary = get_dictionary(chunk_size=chunk_size)
-audio = reconstruct_from_chunks(predicted_atoms, dictionary, )
+audio = reconstruct_from_chunks(predicted_atoms, dictionary,chunk_size, hop_length,
+                                cmin = cmin, cmax=cmax)
 
 print(predicted_atoms.shape, len(audio))
 timestampStr = datetime.now().strftime("%d-%b-%Y-%H-%M-%S")
