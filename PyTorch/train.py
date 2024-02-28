@@ -13,6 +13,7 @@ file_name = "../assets/Wiley.wav"
 x_frames, y_frames = preprocess_data(file_name, n_fft=n_fft, 
                                      hop_length=hop_length, win_length=win_length, 
                                      sequence_length=sequence_length, sr = 44100)
+
 # Create an instance of the dataset
 spectrogram_dataset = SpectrogramDataset(x_frames, y_frames)
 
