@@ -1,9 +1,8 @@
 import torch
-import torch.nn as nn
 from torch.optim import Adam
 from torch.utils.data import DataLoader
-from model import  RNNModel
-from model import preprocess_data_sparse, MatchingPursuitDataset
+from model import MultiClassCoeffiecentLoss, RNNEmbeddingModel
+from model import preprocess_data_embedding, MatchingPursuitDataset
 from matching_pursuit import get_dictionary
 from datetime import datetime
 
@@ -16,7 +15,7 @@ hop_length = chunk_size//4
 sr = 44100
 dictionary = get_dictionary(chunk_size=chunk_size, max_freq=10000, sr=sr)
 dictionary_size = len(dictionary[0])
-x_frames, y_frames = preprocess_data_sparse(file_name,sequence_length=sequence_length, 
+x_frames, y_frames = preprocess_data_embedding(file_name,sequence_length=sequence_length, 
                                         sr = sr, num_atoms=num_atoms,
                                         chunk_size=chunk_size, hop_length=hop_length, 
                                         dictionary=dictionary)
@@ -32,20 +31,17 @@ learning_rate = 0.001
 amount_epochs = 10
 weight_decay = 0.0001
 
-loss_type = nn.MSELoss()
-model = RNNModel(input_size=dictionary_size, hidden_size=256, num_layers=2, output_size=dictionary_size) 
+loss_function = MultiClassCoeffiecentLoss(num_atoms, dictionary_size)
+model = RNNEmbeddingModel(num_categories=dictionary_size, num_atoms=num_atoms, embedding_dim=300,
+                          hidden_size=128, num_layers=2) 
 opt = Adam(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
-
-# checkpoint = 'model_weights_26-Feb-2024-16-58-29.pth'
-# model.load_state_dict(torch.load(checkpoint))
-# model.eval() 
 
 for epoch in range(amount_epochs):
     running_loss = 0.0
     for inputs, targets in dataloader:
         opt.zero_grad()
-        outputs = model(inputs)
-        loss = loss_type(outputs, targets)
+        predicted_indices, predicted_coefficients = model(inputs)
+        loss = loss_function(predicted_indices, predicted_coefficients, targets)
         loss.backward()
         opt.step()
         running_loss += loss.item()

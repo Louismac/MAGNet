@@ -1,7 +1,7 @@
 import numpy as np
 from sklearn.linear_model import OrthogonalMatchingPursuit
 import numpy as np
-from os.path import isdir, exists
+from os.path import exists
 from scipy.signal import get_window
 
 def process_in_chunks(signal, dictionary, chunk_size=2048, hop_length = 1024,
@@ -18,7 +18,9 @@ def process_in_chunks(signal, dictionary, chunk_size=2048, hop_length = 1024,
     
     weight_sum = np.zeros(len(signal))
     chunks_info = []
-    for start in range(0, len(signal) - chunk_size + 1, hop_length):
+    stop = len(signal) - chunk_size + 1
+    print(0, stop, hop_length)
+    for start in range(0, stop, hop_length):
         end = start + chunk_size
         chunk = signal[start:end]
         windowed_chunk = chunk * window
@@ -40,7 +42,7 @@ def matching_pursuit(signal, dictionary, iterations=20):
     atom_indices = []
     coefficients = []
 
-    for i in range(iterations):
+    for _ in range(iterations):
         correlations = np.dot(dictionary.T, residual)  
         best_atom_index = np.argmax(np.abs(correlations))  
         best_coefficient = correlations[best_atom_index] 
@@ -67,6 +69,37 @@ def matching_pursuit(signal, dictionary, iterations=20):
     # atom_indices = np.nonzero(coefficients)[0]
     # return reconstructed_signal, atom_indices, coefficients
 
+def get_unnormalised_atoms(chunk_info, num_atoms, dictionary_size, cmax, cmin):
+    atom_indices = chunk_info[:num_atoms].detach().numpy()
+    atom_indices = np.array(np.ceil(atom_indices*dictionary_size), dtype=np.int32)-1
+    
+    coefficients = chunk_info[num_atoms:].detach().numpy()
+    coefficients = (coefficients * (cmax - cmin)) + cmin
+    return np.array(atom_indices), np.array(coefficients)
+
+def get_dense_atoms(chunk_info):
+    nonzero_indexes = np.nonzero(chunk_info)
+    nonzero_indexes = nonzero_indexes.detach().numpy().ravel()
+    nonzero_values = chunk_info[nonzero_indexes]
+    return nonzero_indexes, nonzero_values.detach().numpy()
+
+def get_embedding_atoms(chunk_info, num_atoms):
+    chunk_info = chunk_info.detach().numpy()
+    return chunk_info[:num_atoms], chunk_info[num_atoms:]
+
+def reconstruct_from_sparse_chunks(chunks_info, dictionary, chunk_size=2048, hop_length=1024):
+    return reconstruct_from_chunks(chunks_info, dictionary, chunk_size, hop_length, get_dense_atoms)
+
+def reconstruct_from_embedding_chunks(chunks_info, dictionary, chunk_size=2048, hop_length=1024):
+    num_atoms = len(chunks_info[0])//2
+    return reconstruct_from_chunks(chunks_info, dictionary, chunk_size, hop_length, 
+                                   get_embedding_atoms,  num_atoms)
+
+def reconstruct_from_normalised_chunks(chunks_info, dictionary, chunk_size=2048, hop_length=1024, cmax=1, cmin=0):
+    num_atoms = len(chunks_info[0])//2
+    dictionary_size = len(dictionary[0])
+    return reconstruct_from_chunks(chunks_info, dictionary, chunk_size, hop_length, 
+                                   get_unnormalised_atoms, num_atoms, dictionary_size, cmax, cmin)
 
 def reconstruct_signal(atom_indices, coefficients, dictionary):
     reconstructed_signal = np.zeros(dictionary.shape[0])
@@ -75,24 +108,17 @@ def reconstruct_signal(atom_indices, coefficients, dictionary):
         reconstructed_signal += coeff * dictionary[:, index]
     return reconstructed_signal
 
-def reconstruct_from_chunks(chunks_info, dictionary, chunk_size=2048, hop_length=1024, cmin=0, cmax=1):
-    
+def reconstruct_from_chunks(chunks_info, dictionary, chunk_size=2048, hop_length=1024, unpack_func=lambda x: x, *args):
     signal_length = (len(chunks_info) * (hop_length))+chunk_size
     reconstructed_signal = np.zeros(signal_length)
     weight_sum = np.zeros(signal_length)  
     
-    num_atoms = len(chunks_info[0])//2
     start = 0
     end = chunk_size
     
-    for _, chunk_info in enumerate(chunks_info):
-
-        atom_indices = chunk_info[:num_atoms].detach().numpy()
-        atom_indices = np.array(np.ceil(atom_indices*len(dictionary[0])), dtype=np.int32)-1
+    for i, chunk_info in enumerate(chunks_info):
         
-        coefficients = chunk_info[num_atoms:].detach().numpy()
-        coefficients = (coefficients * (cmax - cmin)) + cmin
-        
+        atom_indices, coefficients = unpack_func(chunk_info, *args)
         chunk_reconstruction = reconstruct_signal(atom_indices, coefficients, dictionary) 
         
         reconstructed_signal[start:end] += chunk_reconstruction

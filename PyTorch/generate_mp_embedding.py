@@ -1,7 +1,7 @@
 import torch
-from model import RNNModel, MatchingPursuitDataset
-from model import preprocess_data_sparse
-from matching_pursuit import reconstruct_from_sparse_chunks, get_dictionary
+from model import MatchingPursuitDataset, RNNEmbeddingModel
+from model import preprocess_data_embedding
+from matching_pursuit import get_dictionary, reconstruct_from_embedding_chunks
 from datetime import datetime
 import numpy as np
 import soundfile as sf
@@ -16,13 +16,14 @@ hop_length = chunk_size//4
 sr = 44100
 dictionary = get_dictionary(chunk_size=chunk_size, max_freq=10000, sr=sr)
 dictionary_size = len(dictionary[0])
-x_frames, y_frames = preprocess_data_sparse(file_name,sequence_length=sequence_length, 
+x_frames, y_frames = preprocess_data_embedding(file_name,sequence_length=sequence_length, 
                                         sr = sr, num_atoms=num_atoms,
                                         chunk_size=chunk_size, hop_length=hop_length, 
                                         dictionary=dictionary)
 dataset = MatchingPursuitDataset(x_frames, y_frames)
 
-model = RNNModel(dictionary_size, hidden_size=256, num_layers=2, output_size=dictionary_size) 
+model = RNNEmbeddingModel(num_categories=dictionary_size, num_atoms=num_atoms, embedding_dim=300,
+                          hidden_size=128, num_layers=2) 
 checkpoint ="model_weights_29-Feb-2024-12-10-40.pth"
 model.load_state_dict(torch.load(checkpoint))
 model.eval()
@@ -46,10 +47,9 @@ random_chance = 0.05
 print(x_frames.shape, impulse.shape)
 
 for j in range(output_sequence_length):
-    prediction = model(impulse.unsqueeze(0))
-    # probs, coeffiecents = model(impulse.unsqueeze(0))
-    # values, indices = torch.topk(probs, num_atoms, dim=1)
-    # prediction = torch.cat((indices.squeeze(), coeffiecents.squeeze())).unsqueeze(0)
+    probs, coeffiecents = model(impulse.unsqueeze(0))
+    values, indices = torch.topk(probs, num_atoms, dim=1)
+    prediction = torch.cat((indices.squeeze(), coeffiecents.squeeze())).unsqueeze(0)
     predicted_atoms = torch.cat((predicted_atoms, prediction.transpose(0,1)), dim=1)
     impulse = predicted_atoms[:,-sequence_length:]
     if (np.random.random_sample() < random_chance) :
@@ -63,7 +63,7 @@ for j in range(output_sequence_length):
       change_at = change_at + lengths[ctr]
     sys.stdout.write('{:.2f}% data generation complete.   \r'.format((j/output_sequence_length)*100))
     sys.stdout.flush()
-audio = reconstruct_from_sparse_chunks(predicted_atoms.T, dictionary, chunk_size, hop_length)
+audio = reconstruct_from_embedding_chunks(predicted_atoms.T, dictionary, chunk_size, hop_length)
 print(predicted_atoms.T.shape, len(audio))
 timestampStr = datetime.now().strftime("%d-%b-%Y-%H-%M-%S")
 

@@ -7,18 +7,11 @@ import librosa
 import sys
 from os.path import isdir, exists
 from os import listdir
-from matching_pursuit import get_dictionary, process_in_chunks
+from matching_pursuit import process_in_chunks
+np.set_printoptions(suppress=True)
 
-
-def normalise_array(arr):
-    # Subtract the minimum and divide by the range
-    min_val = np.min(arr)
-    max_val = np.max(arr)
-    normalised_arr = (arr - min_val) / (max_val - min_val)
-    return normalised_arr
-
-def preprocess_data_mp(path, sr = 44100, chunk_size=2048, hop_length=1024, 
-                       num_atoms=100, dictionary=None, sequence_length = 40):
+def read_audio(path, sr=44100):
+    #search folder
     x = [0]
     if not isdir(path):
         x, sr = librosa.load(path, sr=sr) 
@@ -30,32 +23,117 @@ def preprocess_data_mp(path, sr = 44100, chunk_size=2048, hop_length=1024,
                 audio, sr, = librosa.load(path + file, sr = sr)
                 x = np.concatenate((x, audio))
     x = np.array(x, dtype=np.float32)
-    _,chunks_info = process_in_chunks(x, 
-                                    dictionary, 
-                                    hop_length=hop_length,
-                                    chunk_size=chunk_size, 
-                                    iterations=num_atoms)
+    return x
+
+def get_sequences(chunks_info, sequence_length):
     #chunks info is num_frames x (num_atoms * 2)
     start = 0
     end = len(chunks_info) - sequence_length - 1 
     step = 1
     x_frames = []
     y_frames = []
-    dictionary_size = len(dictionary[0])
-    chunks_info[:,:num_atoms] = chunks_info[:,:num_atoms]/dictionary_size
-    coefficients = chunks_info[:,num_atoms:]
-    cmin = coefficients.min()
-    cmax = coefficients.max()
-    chunks_info[:,num_atoms:] = (coefficients - cmin) / (cmax - cmin)
+
+    #Split into sequences
     for i in range(start, end, step):
         x = chunks_info[i:i + sequence_length]
         y = chunks_info[i + sequence_length]
         x_frames.append(torch.tensor(x))
         y_frames.append(torch.tensor(y))
+
+    #Swap so items x features x sequence
+    x_frames = torch.stack(x_frames).transpose(1,2)
+    y_frames = torch.stack(y_frames)
+
+    return x_frames, y_frames
+
+def preprocess_data_sparse(path, chunk_size=2048, hop_length=1024,sr = 44100 ,
+                       num_atoms=100, dictionary=None, sequence_length = 40):
+    x = read_audio(path, sr)
+    #Get chunks (this takes time!)
+    _,chunks_info = process_in_chunks(x, 
+                                    dictionary, 
+                                    hop_length=hop_length,
+                                    chunk_size=chunk_size, 
+                                    iterations=num_atoms)
+    #chunks info is num_frames x (num_atoms * 2)
+    dictionary_size = len(dictionary[0])
+    num_frames = len(chunks_info)
+    sparse = np.zeros((num_frames,dictionary_size))
+    for i, chunk in enumerate(chunks_info):
+        for j in range(num_atoms):
+            index = int(chunk[j])
+            coefficient = chunk[j+num_atoms]
+            sparse[i, index] = coefficient
+    x_frames, y_frames = get_sequences(sparse, sequence_length)
+    print(x_frames.shape, y_frames.shape)
+    return x_frames, y_frames
+
+def preprocess_data_embedding(path, chunk_size=2048, hop_length=1024, sr=44100, 
+                       num_atoms=100, dictionary=None, sequence_length = 40):
+    x = read_audio(path, sr)
+    #Get chunks (this takes time!)
+    _,chunks_info = process_in_chunks(x, 
+                                    dictionary, 
+                                    hop_length=hop_length,
+                                    chunk_size=chunk_size, 
+                                    iterations=num_atoms)
+    
+    # #normalise coeffiecents
+    # coefficients = chunks_info[:,num_atoms:]
+    # cmin = coefficients.min()
+    # cmax = coefficients.max()
+    # chunks_info[:,num_atoms:] = (coefficients - cmin) / (cmax - cmin)
+    dictionary_size = len(dictionary[0])
+    num_frames = len(chunks_info)
+    sparse = np.zeros((num_frames,dictionary_size))
+    coefficients = chunks_info[:,num_atoms:]
+    for i, chunk in enumerate(chunks_info):
+        for j in range(num_atoms):
+            index = int(chunk[j])
+            sparse[i, index] = 1
+
+    start = 0
+    end = len(chunks_info) - sequence_length - 1 
+    step = 1
+    x_frames = []
+    y_frames = []
+
+    #Split into sequences
+    for i in range(start, end, step):
+        x = chunks_info[i:i + sequence_length]
+        y = np.concatenate((sparse[i + sequence_length],coefficients[i + sequence_length]))
+        x_frames.append(torch.tensor(x))
+        y_frames.append(torch.tensor(y))
+
+    #Swap so items x features x sequence
     x_frames = torch.stack(x_frames).transpose(1,2)
     y_frames = torch.stack(y_frames)
     print(x_frames.shape, y_frames.shape)
-    return x_frames, y_frames, cmin, cmax
+    return x_frames, y_frames
+
+def preprocess_data_normalised(path, chunk_size=2048, hop_length=1024, sr=44100, 
+                       num_atoms=100, dictionary=None, sequence_length = 40):
+    x = read_audio(path, sr)
+    #Get chunks (this takes time!)
+    _,chunks_info = process_in_chunks(x, 
+                                    dictionary, 
+                                    hop_length=hop_length,
+                                    chunk_size=chunk_size, 
+                                    iterations=num_atoms)
+    
+    #normalise indices
+    dictionary_size = len(dictionary[0])
+    print(chunks_info[sequence_length])
+    chunks_info[:,:num_atoms] = chunks_info[:,:num_atoms]/dictionary_size
+    #normalise coeffiecents
+    coefficients = chunks_info[:,num_atoms:]
+    cmin = coefficients.min()
+    cmax = coefficients.max()
+    chunks_info[:,num_atoms:] = (coefficients - cmin) / (cmax - cmin)
+
+    x_frames, y_frames = get_sequences(chunks_info, sequence_length)
+    print(x_frames.shape, y_frames.shape)
+    return x_frames, y_frames, cmax, cmin
 
 class MatchingPursuitDataset(Dataset):
     def __init__(self, x_frames, y_frames):
@@ -77,10 +155,11 @@ class MultiClassCoeffiecentLoss(nn.Module):
         self.mse_loss = nn.MSELoss()
 
     def forward(self, predicted_indices, predicted_coefficients, targets):
-        true_indices = targets[:,:self.num_atoms]
-        true_coefficients = targets[:,self.num_atoms:]
-        indices_loss = self.softmax_loss(predicted_indices.float(), true_indices.float())
-        coefficients_loss = self.mse_loss(predicted_coefficients, true_coefficients).float()
+        true_indices = targets[:,:self.num_categories]
+        true_coefficients = targets[:,self.num_categories:]
+        #compares probs against binary (num_categories vs num_categories)
+        indices_loss = self.softmax_loss(predicted_indices, true_indices)
+        coefficients_loss = self.mse_loss(predicted_coefficients, true_coefficients)
         total_loss = indices_loss + coefficients_loss
         return total_loss
 
@@ -93,7 +172,9 @@ class RNNEmbeddingModel(nn.Module):
         self.embedding = nn.Embedding(num_categories, embedding_dim)
         self.lstm = nn.LSTM((embedding_dim+1)*num_atoms, hidden_size, num_layers, batch_first=True)
         #this is num_categories for the indices and num_atoms for the coeffients
-        self.fc = nn.Linear(hidden_size, (num_categories * num_atoms)+num_atoms) 
+        self.linear1 = nn.Linear(hidden_size, num_atoms) 
+        self.linear2 = nn.Linear(hidden_size, num_categories)
+        self.sig = nn.Sigmoid()
     
     def forward(self, x):
         indices = x[:, :self.num_atoms].long()
@@ -106,10 +187,10 @@ class RNNEmbeddingModel(nn.Module):
         x = x.view(x.size(0), x.size(2), -1)
         # LSTM expects [batch, seq_len, features]
         x, _ = self.lstm(x)
-        x = self.fc(x[:, -1, :])
-        output_indices, output_coefficients = torch.split(x, [self.num_categories*self.num_atoms, self.num_atoms], dim=1)
-        softmax_outputs = output_indices.view(-1, self.num_atoms, self.num_categories)
-        return softmax_outputs.float(), output_coefficients
+        output_coefficients = self.linear1(x[:, -1, :])
+        output_indices = self.linear2(x[:, -1, :])
+        # output_indices = self.sig(output_indices)
+        return output_indices, output_coefficients
 
 def preprocess_data(path, n_fft=2048,hop_length=512, win_length=2048, sequence_length = 40, sr = 44100):
     cached_x_path = path + '_x_frames.npy'
